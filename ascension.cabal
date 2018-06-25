@@ -1,0 +1,26 @@
+name:          ascension
+version:       0.1.0.0
+cabal-version: >=1.10
+build-type:    Simple
+license:       MIT
+license-file:  LICENSE
+copyright:     (c) 2018 Andrew Lelechenko
+maintainer:    Andrew Lelechenko andrew dot lelechenko at gmail dot com
+homepage:      https://github.com/Bodigrim/ascension
+bug-reports:   https://github.com/Bodigrim/ascension/issues
+synopsis:      Set and distinct ascending list
+author:        Andrew Lelechenko
+
+library
+  build-depends:       
+    base >= 4.7 && < 5,
+    containers >= 0.5
+  exposed-modules:     
+    Data.Ascension
+  default-language: Haskell2010
+  ghc-options: -Wall
+  hs-source-dirs: src
+
+source-repository head
+  type:     git
+  location: https://github.com/Bodigrim/ascension
