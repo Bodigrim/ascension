@@ -11,16 +11,34 @@ bug-reports:   https://github.com/Bodigrim/ascension/issues
 synopsis:      Set and distinct ascending list
 author:        Andrew Lelechenko
 
+
+source-repository head
+  type:     git
+  location: https://github.com/Bodigrim/ascension
+
 library
   build-depends:       
     base >= 4.7 && < 5,
     containers >= 0.5
   exposed-modules:     
     Data.Ascension
+  other-modules:
+    Data.Ascension.DistinctAscList
   default-language: Haskell2010
   ghc-options: -Wall
   hs-source-dirs: src
 
-source-repository head
-  type:     git
-  location: https://github.com/Bodigrim/ascension
+test-suite test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  ghc-options:         -Wall -O2
+  main-is:             Test.hs
+  default-language:    Haskell2010
+  build-depends:         base >= 4.5 && < 5
+                       , ascension
+                       , QuickCheck >= 2.10
+                       , tasty
+                       , tasty-hunit
+                       , tasty-quickcheck
+                       , tasty-smallcheck
+                       , vector
