@@ -11,8 +11,9 @@ module Data.Ascension
   , toDistinctAscList
   , forceUntil
   , forceBoth
-  -- , difference
-  -- , intersection
+
+  , difference
+  , intersection
   -- , filter
   -- , partition
   -- , uncons
@@ -28,6 +29,7 @@ import qualified Data.List as L
 import Data.Data
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Tuple (swap)
 import GHC.Exts
 
 import Data.Ascension.DistinctAscList (DAL(..))
@@ -74,7 +76,8 @@ instance Ord a => Ord (Ascension a) where
 forceUntil :: Ord a => a -> Ascension a -> Ascension a
 forceUntil x a@(Ascension s d (DAL l))
   | Middle x <= d = a
-  | otherwise     = case ns of -- pattern match by weak normal form only
+  | otherwise     = case ns of
+    -- pattern match by weak normal form only
     []     -> Ascension s' Top mempty
     n : os -> Ascension (S.insert n s') (Middle n) (DAL os)
     where
@@ -83,43 +86,53 @@ forceUntil x a@(Ascension s d (DAL l))
       s' = s <> S.fromDistinctAscList ms
 
 forceBoth :: Ord a => Ascension a -> Ascension a -> (Ascension a, Ascension a)
-forceBoth a1@(Ascension s1 d1 (DAL l1)) a2@(Ascension s2 d2 (DAL l2))
+forceBoth a1@(Ascension s1 d1 _) a2@(Ascension s2 d2 _)
   | x1 <= d2
-  , x2 <= d1  = ( Ascension s1 d3 (DAL l1)
-                , Ascension s2 d3 (DAL l2)
-                )
-  | x1 <= d2  = let (ms, ns) = L.span ((<= x2) . Middle) l1
-             in ( Ascension (s1 <> S.fromDistinctAscList ms) x2 (DAL ns)
-                , a2 { ascDelimiter = x2 }
-                )
-  | x2 <= d1 = let (ms, ns) = L.span ((<= x1) . Middle) l2
-             in ( a1 { ascDelimiter = x1 }
-                , Ascension (s2 <> S.fromDistinctAscList ms) x1 (DAL ns)
-                )
+  , x2 <= d1  = if d1 <= d2
+                then (a1, a2 { ascDelimiter = d1 })
+                else (a1 { ascDelimiter = d2 }, a2)
+  | x1 <= d2  = forceBothHelper x2 a1 a2
+  | x2 <= d1  = swap $ forceBothHelper x1 a2 a1
   | otherwise = error "forceBoth: impossible case"
   where
     x1 = maybe Bottom Middle (S.lookupMax s1)
     x2 = maybe Bottom Middle (S.lookupMax s2)
-    d3 = d1 `min` d2
+
+forceBothHelper :: Ord a => Delimiter a -> Ascension a -> Ascension a -> (Ascension a, Ascension a)
+forceBothHelper x2 (Ascension s1 _ (DAL l1)) a2@(Ascension _ d2 _) = case ns of
+  -- pattern match by weak normal form only
+  [] -> (Ascension (s1 <> S.fromDistinctAscList l1) d2 mempty, a2)
+  n : os
+    | Middle n <= d2
+    -> ( Ascension (S.insert n (s1 <> S.fromDistinctAscList ms)) (Middle n) (DAL os)
+       , a2 { ascDelimiter = Middle n }
+       )
+    | otherwise
+    -> ( Ascension (s1 <> S.fromDistinctAscList ms) x2 (DAL ns)
+       , a2 { ascDelimiter = x2 }
+       )
+  where
+    -- by definition of L.span, n is in a weak normal form
+    (ms, ns) = L.span ((<= x2) . Middle) l1
 
 instance Ord a => Semigroup (Ascension a) where
-  a1 <> a2 = let (Ascension s1 d1 l1, Ascension s2 d2 l2) = forceBoth a1 a2 in
-    Ascension (s1 <> s2) (d1 `min` d2) (l1 <> l2)
+  a1 <> a2 = let (Ascension s1 d l1, Ascension s2 _ l2) = forceBoth a1 a2 in
+    Ascension (s1 <> s2) d (l1 <> l2)
 
 instance Ord a => Monoid (Ascension a) where
   mempty  = Ascension mempty Top mempty
   mappend = (<>)
 
--- filter :: (a -> Bool) -> Ascension a -> Ascension a
--- filter = (fst .) . partition
+instance Foldable Ascension where
+  foldMap f (Ascension s _ l) = foldMap f s <> foldMap f l
 
--- difference :: Ord a => Ascension a -> Ascension a -> Ascension a
--- difference a1 a2 = let (Ascension s1 d1 l1, Ascension s2 d2 l2) = forceBoth a1 a2 in
---   Ascension (s1 `S.difference` s2) undefined (DAL.difference l1 l2)
+difference :: Ord a => Ascension a -> Ascension a -> Ascension a
+difference a1 a2 = let (Ascension s1 d l1, Ascension s2 _ l2) = forceBoth a1 a2 in
+  Ascension (s1 `S.difference` s2) d (DAL.difference l1 l2)
 
--- intersection :: Ord a => Ascension a -> Ascension a -> Ascension a
--- intersection a1 a2 = let (Ascension s1 d1 l1, Ascension s2 d2 l2) = forceBoth a1 a2 in
---   Ascension (s1 `S.intersection` s2) undefined (DAL.intersection l1 l2)
+intersection :: Ord a => Ascension a -> Ascension a -> Ascension a
+intersection a1 a2 = let (Ascension s1 d l1, Ascension s2 _ l2) = forceBoth a1 a2 in
+  Ascension (s1 `S.intersection` s2) d (DAL.intersection l1 l2)
 
 -- uncons :: Ascension a -> Maybe (a, Ascension a)
 -- uncons (Ascension s d l) = case S.minView s of
@@ -150,6 +163,9 @@ instance Ord a => Monoid (Ascension a) where
 --   where
 --     (s1, s2) = S.partition predicate s
 --     (l1, l2) = DAL.partition predicate l
+
+-- filter :: (a -> Bool) -> Ascension a -> Ascension a
+-- filter = (fst .) . partition
 
 -- elemAt :: Int -> Ascension a -> a
 -- elemAt = undefined

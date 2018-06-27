@@ -11,17 +11,19 @@ import Test.Tasty.HUnit as H
 import Test.Tasty.QuickCheck as QC
 
 import Data.Function (fix)
-import Data.List
+import Data.List (nub, sort)
+import qualified Data.List as L
+import qualified Data.Set as S
 import Data.Word
 
 import Data.Ascension
 import GHC.Exts
 
 instance (Ord a, Arbitrary a) => Arbitrary (Ascension a) where
- arbitrary = do
-  xs <- arbitrary
-  x  <- arbitrary
-  pure $ forceUntil x (fromDistinctAscList (nub (sort xs)))
+  arbitrary = do
+    xs <- arbitrary
+    x  <- arbitrary
+    pure $ forceUntil x (fromDistinctAscList (nub (sort xs)))
 
 main :: IO ()
 main = defaultMain tests
@@ -58,4 +60,22 @@ tests = testGroup "All"
       .&. xs' === xs
       .&. ys' === ys
       .&. ascDelimiter xs' === ascDelimiter ys'
+
+  , QC.testProperty "mappend" $
+    \(xs :: Ascension Word8) ys -> let zs = xs <> ys
+      in isValid zs
+      .&. toList zs === nub (sort (toList xs <> toList ys))
+
+  , QC.testProperty "difference" $
+    \(xs :: Ascension Word8) ys -> let zs = xs `difference` ys
+      in isValid zs
+      .&. toList zs === toList (S.fromDistinctAscList (toList xs) `S.difference` S.fromDistinctAscList (toList ys))
+
+  , QC.testProperty "intersection" $
+    \(xs :: Ascension Word8) ys -> let zs = xs `intersection` ys
+      in isValid zs
+      .&. toList zs === toList (S.fromDistinctAscList (toList xs) `S.intersection` S.fromDistinctAscList (toList ys))
+
+  , QC.testProperty "foldMap" $
+    \(xs :: Ascension Word8) -> foldMap (: []) xs === toList xs
   ]
