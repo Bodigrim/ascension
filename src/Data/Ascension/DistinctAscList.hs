@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE DeriveFoldable      #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RoleAnnotations     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Data.Ascension.DistinctAscList
@@ -22,46 +23,44 @@ import qualified Data.List as L
 newtype DAL a = DAL [a]
   deriving (Eq, Ord, Show, Foldable, Data)
 
+type role DAL nominal
+
 instance Ord a => Semigroup (DAL a) where
-  (<>) = merge
+  (<>) = union
 
 instance Ord a => Monoid (DAL a)
   where
     mempty = DAL []
     mappend = (<>)
 
-merge :: forall a. Ord a => DAL a -> DAL a -> DAL a
-merge = coerce go
-  where
-    go :: [a] -> [a] -> [a]
-    go xs [] = xs
-    go [] ys = ys
-    go xs@(x : xs') ys@(y : ys') = case x `compare` y of
-      LT -> x : go xs' ys
-      EQ -> x : go xs' ys'
-      GT -> y : go xs  ys'
+union :: forall a. Ord a => DAL a -> DAL a -> DAL a
+union = mergeWith compare id (\x _ -> Just x) id
 
 intersection :: forall a. Ord a => DAL a -> DAL a -> DAL a
-intersection = coerce go
-  where
-    go :: [a] -> [a] -> [a]
-    go _ [] = []
-    go [] _ = []
-    go xs@(x : xs') ys@(y : ys') = case x `compare` y of
-      LT -> go xs' ys
-      EQ -> x : go xs' ys'
-      GT -> go xs ys'
+intersection = mergeWith compare (\_ -> []) (\x _ -> Just x) (\_ -> [])
 
 difference :: forall a. Ord a => DAL a -> DAL a -> DAL a
-difference = coerce go
+difference = mergeWith compare id (\_ _ -> Nothing) (\_ -> [])
+
+mergeWith
+  :: forall a b c.
+     (a -> b -> Ordering)
+  -> ([a] -> [c])
+  -> (a -> b -> Maybe c)
+  -> ([b] -> [c])
+  -> DAL a
+  -> DAL b
+  -> DAL c
+mergeWith cmpr lt eq gt = coerce go
   where
-    go :: [a] -> [a] -> [a]
-    go xs [] = xs
-    go [] _  = []
-    go xs@(x : xs') ys@(y : ys') = case x `compare` y of
-      LT -> x : go xs' ys
-      EQ -> go xs' ys'
-      GT -> go xs ys'
+    go :: [a] -> [b] -> [c]
+    go xs [] = lt xs
+    go [] ys = gt ys
+    go xs@(x : xs') ys@(y : ys') = case x `cmpr` y of
+      LT -> lt [x] ++ go xs' ys
+      EQ -> maybe id (:) (eq x y) (go xs' ys')
+      GT -> gt [y] ++ go xs ys'
+{-# INLINE mergeWith #-}
 
 member :: forall a. Ord a => a -> DAL a -> Bool
 member x (DAL xs) = go xs
