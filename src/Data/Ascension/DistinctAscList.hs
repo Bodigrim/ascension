@@ -3,35 +3,74 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RoleAnnotations     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module Data.Ascension.DistinctAscList
-  ( DAL(..)
+  ( DAL
+  , fromDistinctAscList
+  , fromDistinctDescList
+  , toSet
+  , toIntSet
+  , toSetDown
   , intersection
   , difference
+  , mergeWith
   , member
   , null
   , uncons
   , mapMonotonic
   , partition
+  , span
+  , reverse
+  , downDown
   ) where
 
-import Prelude hiding (null)
+import Prelude hiding (null, reverse, span)
 import Data.Coerce (coerce)
 import Data.Data (Data)
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IS
 import qualified Data.List as L
+import Data.Ord (Down(..))
+import Data.Set (Set)
+import qualified Data.Set as S
+import Data.Type.Equality ((:~:)(..))
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype DAL a = DAL [a]
   deriving (Eq, Ord, Show, Foldable, Data)
 
 type role DAL nominal
 
+fromDistinctAscList :: [a] -> DAL a
+fromDistinctAscList = coerce
+
+fromDistinctDescList :: [a] -> DAL (Down a)
+fromDistinctDescList = coerce
+
+toSet :: DAL a -> Set a
+toSet = coerce S.fromDistinctAscList
+
+toSetDown :: DAL (Down a) -> Set a
+toSetDown = coerce S.fromDistinctDescList
+
+toIntSet :: DAL Int -> IntSet
+toIntSet = coerce IS.fromDistinctAscList
+
+reverse :: forall a. DAL a -> DAL (Down a)
+reverse = coerce (L.reverse :: [a] -> [a])
+
+-- | Use in
+-- castWith (Refl `apply` downDown)
+downDown :: Down (Down a) :~: a
+downDown = unsafeCoerce (Refl :: a :~: a)
+
 instance Ord a => Semigroup (DAL a) where
   (<>) = union
 
-instance Ord a => Monoid (DAL a)
-  where
-    mempty = DAL []
-    mappend = (<>)
+instance Ord a => Monoid (DAL a) where
+  mempty = DAL []
+  mappend = (<>)
 
 union :: forall a. Ord a => DAL a -> DAL a -> DAL a
 union = mergeWith compare id (\x _ -> Just x) id
@@ -84,3 +123,6 @@ mapMonotonic f = coerce (map f)
 
 partition :: (a -> Bool) -> DAL a -> (DAL a, DAL a)
 partition f = coerce (L.partition f)
+
+span :: (a -> Bool) -> DAL a -> (DAL a, DAL a)
+span f = coerce (L.span f)

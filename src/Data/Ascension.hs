@@ -24,15 +24,15 @@ module Data.Ascension
   ) where
 
 import Prelude hiding (span, filter)
-import qualified Data.List as L
 
 import Data.Data
+import Data.Foldable
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Tuple (swap)
-import GHC.Exts
+import qualified GHC.Exts as E
 
-import Data.Ascension.DistinctAscList (DAL(..))
+import Data.Ascension.DistinctAscList (DAL)
 import qualified Data.Ascension.DistinctAscList as DAL
 
 data Delimiter a = Bottom | Middle a | Top
@@ -52,7 +52,7 @@ isValid (Ascension s d l) = case d of
            && maybe True ((> x) . fst) (DAL.uncons l)
   Top      -> DAL.null l
 
-instance Ord a => IsList (Ascension a) where
+instance Ord a => E.IsList (Ascension a) where
   type (Item (Ascension a)) = a
 
   -- | Strict. See 'fromDistinctAscList' for lazy construction.
@@ -62,10 +62,10 @@ instance Ord a => IsList (Ascension a) where
 
 -- Lazy. See 'fromList' for strict construction.
 fromDistinctAscList :: [a] -> Ascension a
-fromDistinctAscList = Ascension S.empty Bottom . DAL
+fromDistinctAscList = Ascension S.empty Bottom . DAL.fromDistinctAscList
 
 toDistinctAscList :: Ascension a -> [a]
-toDistinctAscList (Ascension s _ (DAL l)) = S.toAscList s <> l
+toDistinctAscList (Ascension s _ l) = S.toAscList s <> toList l
 
 instance Ord a => Eq (Ascension a) where
   a1 == a2 = toDistinctAscList a1 == toDistinctAscList a2
@@ -74,16 +74,16 @@ instance Ord a => Ord (Ascension a) where
   a1 `compare` a2 = toDistinctAscList a1 `compare` toDistinctAscList a2
 
 forceUntil :: Ord a => a -> Ascension a -> Ascension a
-forceUntil x a@(Ascension s d (DAL l))
+forceUntil x a@(Ascension s d l)
   | Middle x <= d = a
-  | otherwise     = case ns of
+  | otherwise     = case DAL.uncons ns of
     -- pattern match by weak normal form only
-    []     -> Ascension s' Top mempty
-    n : os -> Ascension (S.insert n s') (Middle n) (DAL os)
+    Nothing      -> Ascension s' Top mempty
+    Just (n, os) -> Ascension (S.insert n s') (Middle n) os
     where
       -- by definition of L.span, n is in a weak normal form
-      (ms, ns) = L.span (<= x) l
-      s' = s <> S.fromDistinctAscList ms
+      (ms, ns) = DAL.span (<= x) l
+      s' = s <> DAL.toSet ms
 
 forceBoth :: Ord a => Ascension a -> Ascension a -> (Ascension a, Ascension a)
 forceBoth a1@(Ascension s1 d1 _) a2@(Ascension s2 d2 _)
@@ -99,21 +99,21 @@ forceBoth a1@(Ascension s1 d1 _) a2@(Ascension s2 d2 _)
     x2 = maybe Bottom Middle (S.lookupMax s2)
 
 forceBothHelper :: Ord a => Delimiter a -> Ascension a -> Ascension a -> (Ascension a, Ascension a)
-forceBothHelper x2 (Ascension s1 _ (DAL l1)) a2@(Ascension _ d2 _) = case ns of
+forceBothHelper x2 (Ascension s1 _ l1) a2@(Ascension _ d2 _) = case DAL.uncons ns of
   -- pattern match by weak normal form only
-  [] -> (Ascension (s1 <> S.fromDistinctAscList l1) d2 mempty, a2)
-  n : os
+  Nothing -> (Ascension (s1 <> S.fromDistinctAscList (toList l1)) d2 mempty, a2)
+  Just (n, os)
     | Middle n <= d2
-    -> ( Ascension (S.insert n (s1 <> S.fromDistinctAscList ms)) (Middle n) (DAL os)
+    -> ( Ascension (S.insert n (s1 <> DAL.toSet ms)) (Middle n) os
        , a2 { ascDelimiter = Middle n }
        )
     | otherwise
-    -> ( Ascension (s1 <> S.fromDistinctAscList ms) x2 (DAL ns)
+    -> ( Ascension (s1 <> DAL.toSet ms) x2 ns
        , a2 { ascDelimiter = x2 }
        )
   where
     -- by definition of L.span, n is in a weak normal form
-    (ms, ns) = L.span ((<= x2) . Middle) l1
+    (ms, ns) = DAL.span ((<= x2) . Middle) l1
 
 instance Ord a => Semigroup (Ascension a) where
   a1 <> a2 = let (Ascension s1 d l1, Ascension s2 _ l2) = forceBoth a1 a2 in
